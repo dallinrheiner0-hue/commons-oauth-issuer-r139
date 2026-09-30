@@ -1,0 +1,14 @@
+{
+  ".gitignore": "c2b127ad62460cd7a0ab7764bb760a268eb4e72eb6267622dd8b72c216b3c622",
+  ".python-version": "f50159fad3f4319868eb38717b91d55843c41e9803014c8de05e116a6d0bcfdc",
+  "README.md": "7bf29db3074e8c2b04dc0eaaf0dbaf3264edd569925eebc2b7d31ec9aaa678e2",
+  "app.py": "b4c51244de679bff4a326f90b15c124eb27fbe7b5986f4b6f9d7b1adcd5092b0",
+  "http_oauth.py": "40e7e68f64752af4a60f5ec7fec1087f29bf4a5bf038fbc47fc55aceee56df5a",
+  "oauth.py": "9aca31cc98ef2e348155bc773ee76062c8847405c2b952574e49b2842ddccd3e",
+  "render.yaml": "cc341a92a9ba43b683376c21f6f5cfb5cd6cae52473c5e19156f47aae9c979ca",
+  "requirements.lock": "88626dae109d1b5bc0031ab07675a5240a42ed438e95b46782a63ee6778c13d1",
+  "requirements.txt": "fe7806e15be15f63e263d5f371f94eb13d3fe5ac502339095085d5fcc866fc34",
+  "run.py": "d9741f7d15fbc748ccd8855009aba5d8e9f8c7eb50380201309273e0e0da2ea4",
+  "state.py": "c486ef4b49c84f76fe737b5144a5c86313e7f0d94430dc5e70303db0c03074e6",
+  "verify_artifact.py": "1ff1adf66bd6f28a3a1ec191699dfb83db582c711c4b04db35045613bb22d3e6"
+}
