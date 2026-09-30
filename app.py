@@ -26,7 +26,7 @@ class Application:
         # Render's internal health probe need not carry public TLS proxy headers.
         # This route reveals only liveness and performs no storage work.
         if scope['path']=='/healthz' and scope['method']=='GET':
-            await JSONResponse({'alive':True,'synthetic_only':True},headers={'Cache-Control':'no-store'})(scope,receive,send)
+            await JSONResponse({'alive':True,'oauth_enabled':self.issuer is not None},headers={'Cache-Control':'no-store'})(scope,receive,send)
             return
         headers=scope.get('headers',[])
         def one(name):
@@ -39,7 +39,7 @@ class Application:
             if one(b'host')!=urlsplit(self.origin).netloc or one(b'x-forwarded-proto')!='https': raise Reject('INGRESS')
             path=scope['path']; method=scope['method']
             if path=='/healthz' and method=='GET':
-                result={'alive':True,'synthetic_only':True};status=200
+                result={'alive':True,'oauth_enabled':self.issuer is not None};status=200
             elif path in ('/initialize','/activate','/status'):
                 auth=one(b'authorization')
                 if self.clock()>=self.operator_deadline or len(auth)>256 or not auth.startswith('Bearer ') or not hmac.compare_digest(digest(auth[7:]),self.operator_digest):
@@ -74,11 +74,11 @@ class Application:
 def create_app():
     db=Database(os.environ['DATABASE_URL'],json.loads(os.environ['DATABASE_BINDING']))
     issuer=None
-    if os.environ.get('SYNTHETIC_OAUTH_ENABLED','false')=='true':
-        config=Config(**json.loads(os.environ['SYNTHETIC_OAUTH_CONFIG']))
-        key=serialization.load_pem_private_key(os.environ['SYNTHETIC_SIGNING_KEY'].encode(),password=None)
+    if os.environ.get('COMMONS_OAUTH_ENABLED','false')=='true':
+        config=Config(**json.loads(os.environ['COMMONS_OAUTH_CONFIG']))
+        key=serialization.load_pem_private_key(os.environ['COMMONS_SIGNING_KEY'].encode(),password=None)
         issuer=Issuer(config,db,key)
-    elif os.environ.get('SYNTHETIC_OAUTH_ENABLED','false')!='false': raise Reject('MODE')
+    elif os.environ.get('COMMONS_OAUTH_ENABLED','false')!='false': raise Reject('MODE')
     origin=configured_origin(os.environ)
     if issuer and issuer.cfg.issuer!=origin: raise Reject('ISSUER_BINDING')
     return Application(db,origin,os.environ['OPERATOR_DIGEST'],int(os.environ['OPERATOR_DEADLINE']),issuer)

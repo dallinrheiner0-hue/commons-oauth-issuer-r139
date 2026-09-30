@@ -33,15 +33,15 @@ class Config:
 class Issuer:
     def __init__(self,config,db,private_key,clock=time.time,fault=lambda _:None):
         self.cfg,self.db,self.key,self.clock,self.fault=config,db,private_key,clock,fault
-        if config.subject!='synthetic-owner' or config.grant!='synthetic-grant-r139':
-            raise Reject('SYNTHETIC_ONLY')
+        if config.subject!='dallin-commons-owner' or config.grant!='commons-proteus-direct-mvp':
+            raise Reject('OWNER_GRANT_BINDING')
         for url in (config.issuer,config.resource,config.callback):
             p=urlsplit(url)
             if p.scheme!='https' or not p.hostname or p.username or p.password or p.query or p.fragment:
                 raise Reject('HTTPS_CONFIG_REQUIRED')
-        if config.callback!='https://chatgpt.com/connector_platform_oauth_redirect':
+        if not re.fullmatch(r'https://chatgpt[.]com/connector/oauth/[A-Za-z0-9_-]+',config.callback):
             raise Reject('REVIEW_CALLBACK_REQUIRED')
-        if config.scopes!='commons:send' or not re.fullmatch('[a-f0-9]{64}',config.login_digest):
+        if config.scopes!='commons:read commons:reply commons:send commons:ack' or not re.fullmatch('[a-f0-9]{64}',config.login_digest):
             raise Reject('TRIAL_CONFIG')
         if type(config.deadline) is not int or not 0<config.deadline<=clock()+86400:
             raise Reject('BOUNDED_TRIAL_DEADLINE_REQUIRED')
@@ -63,7 +63,7 @@ class Issuer:
         return dict(issuer=c.issuer,authorization_endpoint=c.issuer+'/authorize',token_endpoint=c.issuer+'/token',
             jwks_uri=c.issuer+'/jwks',response_types_supported=['code'],grant_types_supported=['authorization_code'],
             token_endpoint_auth_methods_supported=['none'],code_challenge_methods_supported=['S256'],
-            scopes_supported=[c.scopes],authorization_response_iss_parameter_supported=True)
+            scopes_supported=c.scopes.split(),authorization_response_iss_parameter_supported=True)
 
     def start(self,params):
         c=self.cfg
@@ -76,8 +76,8 @@ class Issuer:
         flow,csrf=secrets.token_urlsafe(32),secrets.token_urlsafe(32)
         with self.db.tx() as run:
             row=self.admit(run)
-            if row[1] or row[2]>=32: raise Reject('TRIAL_CONSUMED_OR_LIMITED')
-            changed=run('UPDATE trial SET attempts=attempts+1 WHERE id=1 AND attempts<32 AND issued=0')
+            if row[2]>=32: raise Reject('TRIAL_CONSUMED_OR_LIMITED')
+            changed=run('UPDATE trial SET attempts=attempts+1 WHERE id=1 AND attempts<32')
             if changed.rowcount!=1: raise Reject('TRIAL_CONSUMED_OR_LIMITED')
             run('INSERT INTO flows VALUES(?,?,?,0)',
                 (digest(flow),canonical({'params':params,'csrf':digest(csrf)}),min(int(self.clock())+300,c.deadline)))
@@ -112,14 +112,13 @@ class Issuer:
         token=None
         with self.db.tx() as run:
             row=self.admit(run)
-            if row[1]: raise Reject('TRIAL_CONSUMED')
             saved=run('SELECT payload,expires FROM codes WHERE id=? AND used=0',(digest(params['code']),)).fetchone()
             if not saved or saved[1]<=self.clock(): raise Reject('CODE_UNAVAILABLE')
             data=json.loads(saved[0])
             if not hmac.compare_digest(challenge(verifier),data['code_challenge']): raise Reject('PKCE')
             if run('UPDATE codes SET used=1 WHERE id=? AND used=0',(digest(params['code']),)).rowcount!=1:
                 raise Reject('CODE_CONSUMED')
-            if run('UPDATE trial SET issued=1 WHERE id=1 AND issued=0').rowcount!=1:
+            if run('UPDATE trial SET issued=issued+1 WHERE id=1 AND issued<32').rowcount!=1:
                 raise Reject('TRIAL_CONSUMED')
             now=int(self.clock()); expires=min(now+600,c.deadline)
             token=jwt.encode(dict(iss=c.issuer,aud=c.resource,sub=c.subject,client_id=c.client_id,

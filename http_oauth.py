@@ -21,9 +21,9 @@ def app_for(issuer):
         flow,csrf=issuer.start(fields(request.scope['query_string']))
         # Server-owned copy. No model text, claims or redirects are rendered.
         page='''<!doctype html><html lang="en"><meta name="viewport" content="width=device-width">
-<title>Commons trial sign-in</title><h1>Commons synthetic OAuth trial</h1>
-<p>Authorize one synthetic token for the pinned test resource. No real ChatGPT connection is admitted.
-This grants no execution authority and no access to private conversation history.</p>
+<title>Commons trial sign-in</title><h1>Commons private conversation trial</h1>
+<p>Authorize ChatGPT to read and send messages only in the Dallin / Proteus direct Commons conversation.
+This grants no execution authority or access to other conversations. Use this connection only in the selected private Proteus chat. The trial ends within 24 hours.</p>
 <form method="post" action="/consent"><input type="hidden" name="csrf" value="%s">
 <label>Trial passphrase <input name="secret" type="password" autocomplete="off" required maxlength="256"></label>
 <button type="submit">Allow this trial</button></form></html>''' % html.escape(csrf,quote=True)
