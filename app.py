@@ -40,7 +40,7 @@ class Application:
             path=scope['path']; method=scope['method']
             if path=='/healthz' and method=='GET':
                 result={'alive':True,'oauth_enabled':self.issuer is not None};status=200
-            elif path in ('/initialize','/activate','/status'):
+            elif path in ('/initialize','/activate','/bind-unused','/status'):
                 auth=one(b'authorization')
                 if self.clock()>=self.operator_deadline or len(auth)>256 or not auth.startswith('Bearer ') or not hmac.compare_digest(digest(auth[7:]),self.operator_digest):
                     status=401;result={'error':'unauthorized'}
@@ -52,6 +52,9 @@ class Application:
                         if msg['type']!='http.request' or msg.get('body'): raise Reject('EMPTY_BODY_REQUIRED')
                         if not msg.get('more_body'): break
                     if path=='/initialize': result=self.db.initialize()
+                    elif path=='/bind-unused':
+                        if not self.issuer: raise Reject('NO_CONFIG')
+                        result=self.db.rebind_unused(self.issuer)
                     elif path=='/activate':
                         if not self.issuer: raise Reject('NO_SYNTHETIC_CONFIG')
                         result=self.db.activate(self.issuer)

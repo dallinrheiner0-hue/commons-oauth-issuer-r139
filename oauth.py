@@ -39,7 +39,7 @@ class Issuer:
             p=urlsplit(url)
             if p.scheme!='https' or not p.hostname or p.username or p.password or p.query or p.fragment:
                 raise Reject('HTTPS_CONFIG_REQUIRED')
-        if not re.fullmatch(r'https://chatgpt[.]com/connector/oauth/[A-Za-z0-9_-]+',config.callback):
+        if config.callback!='https://chatgpt.com/connector_platform_oauth_redirect' and not re.fullmatch(r'https://chatgpt[.]com/connector/oauth/[A-Za-z0-9_-]+',config.callback):
             raise Reject('REVIEW_CALLBACK_REQUIRED')
         if config.scopes!='commons:read commons:reply commons:send commons:ack' or not re.fullmatch('[a-f0-9]{64}',config.login_digest):
             raise Reject('TRIAL_CONFIG')

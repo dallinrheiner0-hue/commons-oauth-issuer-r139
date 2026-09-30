@@ -90,3 +90,14 @@ class Database:
             if row[1] or row[2] or any(run('SELECT COUNT(*) FROM '+t).fetchone()[0] for t in ('flows','codes')): raise Reject('NOT_EMPTY')
             run('UPDATE trial SET pin=?,activated=?,deadline=? WHERE id=1',(issuer.pin,now,issuer.cfg.deadline))
         return {'result':'activated','deadline':issuer.cfg.deadline}
+
+    def rebind_unused(self,issuer):
+        # Owner-only correction of host-discovered metadata before any OAuth flow.
+        # Never repairs or reinitializes schema and cannot touch used authorizations.
+        with self.tx() as run:
+            run('SELECT pg_advisory_xact_lock(139139)')
+            row=self.inspect(run)
+            if not row[4] or row[5]!=issuer.cfg.deadline or issuer.clock()>=row[5]: raise Reject('WINDOW')
+            if row[1] or row[2] or any(run('SELECT COUNT(*) FROM '+t).fetchone()[0] for t in ('flows','codes')): raise Reject('ALREADY_USED')
+            run('UPDATE trial SET pin=? WHERE id=1',(issuer.pin,))
+        return {'result':'unused_binding_updated','deadline':issuer.cfg.deadline}
