@@ -1,10 +1,10 @@
 # Database-only Blueprint. No service, secrets, or source auto-deployment.
 databases:
-  - name: commons-oauth-state-r139
+  - name: commons-oauth-state-mvp
     plan: free
     region: ohio
     postgresMajorVersion: "18"
-    databaseName: commons_oauth_state_r139
+    databaseName: commons_oauth_state_mvp
     ipAllowList: []
     storageAutoscalingEnabled: false
     connectionPool: none

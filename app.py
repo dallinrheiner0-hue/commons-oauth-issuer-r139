@@ -85,7 +85,7 @@ def create_app():
 
 def configured_origin(env):
     if env.get('RENDER')=='true':
-        if env.get('RENDER_SERVICE_NAME')!='commons-oauth-trial-r139': raise Reject('SERVICE_BINDING')
+        if env.get('RENDER_SERVICE_NAME')!='commons-oauth-trial-mvp': raise Reject('SERVICE_BINDING')
         origin=env['RENDER_EXTERNAL_URL']
         if not (urlsplit(origin).hostname or '').endswith('.onrender.com'): raise Reject('RENDER_ORIGIN')
         if env.get('ISSUER_ORIGIN',origin)!=origin: raise Reject('ORIGIN_DRIFT')

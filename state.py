@@ -21,8 +21,8 @@ class Database:
         if (p.scheme not in ('postgres','postgresql') or p.hostname!=binding['resource_id']
             or p.port not in (None,5432) or p.query or p.fragment
             or unquote(p.path[1:])!=binding['database'] or unquote(p.username or '')!=binding['user']
-            or not p.password or binding['database']!='commons_oauth_state_r139'
-            or binding['workspace']!='tea-daulra8473hc73bo7ls0'
+            or not p.password or binding['database']!='commons_oauth_state_mvp'
+            or binding['workspace']!='tea-dauni48473hc73bts5kg'
             or not re.fullmatch(r'dpg-[a-z0-9]+-a',binding['resource_id'])
             or not re.fullmatch(r'[a-f0-9]{32}',binding['initialization_id'])):
             raise Reject('DATABASE_BINDING')
@@ -35,7 +35,7 @@ class Database:
         try:
             identity=c.execute('SELECT current_database(), current_user').fetchone()
             if tuple(identity)!=(self.binding['database'],self.binding['user']): raise Reject('DATABASE_IDENTITY')
-            def run(sql,values=()): return c.execute(sql.replace('?', '%s'),values)
+            def run(sql,values=()): return c.execute(sql.replace('?', '%s'), values if values else None)
             yield run
             c.commit()
         except BaseException:
