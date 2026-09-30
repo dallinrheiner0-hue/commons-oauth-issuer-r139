@@ -14,7 +14,7 @@ Render health path: `/healthz`. This returns process liveness only; it never ini
 
 - `DATABASE_URL`: fresh database internal URL only; secret, never source/log output.
 - `DATABASE_BINDING`: JSON object with `resource_id`, `database` (`commons_oauth_state_r139`), `user`, `workspace` (`tea-daulra8473hc73bo7ls0`), and a fresh 32-character lowercase hex `initialization_id`. These are pinned admission facts, not caller inputs.
-- `ISSUER_ORIGIN`: exact HTTPS origin, no path/query. Pin to Render's assigned hostname.
+- `RENDER_EXTERNAL_URL`: provider-supplied exact HTTPS origin; no predicted hostname is used. When RENDER=true, RENDER_SERVICE_NAME must equal commons-oauth-trial-r139. Optional `ISSUER_ORIGIN` must match the provider value exactly; local fixtures require this explicit origin instead. Record the actual assigned hostname before operator requests. Later synthetic OAuth configuration must match it.
 - `OPERATOR_DIGEST`: SHA-256 hex of a future randomly generated 32-byte operator secret. It only controls initialize/status/synthetic activate, never messages. Keep the raw value outside the service. No value ships in this artifact.
 - `OPERATOR_DEADLINE`: absolute Unix expiry, no more than 24 hours ahead. Expired restarts remain closed; no rolling extension.
 - `SYNTHETIC_OAUTH_ENABLED`: `false` for initial provisioning. No signing key or OAuth configuration is required in this mode.

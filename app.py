@@ -23,6 +23,11 @@ class Application:
 
     async def __call__(self,scope,receive,send):
         if scope['type']!='http': return
+        # Render's internal health probe need not carry public TLS proxy headers.
+        # This route reveals only liveness and performs no storage work.
+        if scope['path']=='/healthz' and scope['method']=='GET':
+            await JSONResponse({'alive':True,'synthetic_only':True},headers={'Cache-Control':'no-store'})(scope,receive,send)
+            return
         headers=scope.get('headers',[])
         def one(name):
             values=[v.decode('latin1') for k,v in headers if k.lower()==name]
@@ -74,4 +79,15 @@ def create_app():
         key=serialization.load_pem_private_key(os.environ['SYNTHETIC_SIGNING_KEY'].encode(),password=None)
         issuer=Issuer(config,db,key)
     elif os.environ.get('SYNTHETIC_OAUTH_ENABLED','false')!='false': raise Reject('MODE')
-    return Application(db,os.environ['ISSUER_ORIGIN'],os.environ['OPERATOR_DIGEST'],int(os.environ['OPERATOR_DEADLINE']),issuer)
+    origin=configured_origin(os.environ)
+    if issuer and issuer.cfg.issuer!=origin: raise Reject('ISSUER_BINDING')
+    return Application(db,origin,os.environ['OPERATOR_DIGEST'],int(os.environ['OPERATOR_DEADLINE']),issuer)
+
+def configured_origin(env):
+    if env.get('RENDER')=='true':
+        if env.get('RENDER_SERVICE_NAME')!='commons-oauth-trial-r139': raise Reject('SERVICE_BINDING')
+        origin=env['RENDER_EXTERNAL_URL']
+        if not (urlsplit(origin).hostname or '').endswith('.onrender.com'): raise Reject('RENDER_ORIGIN')
+        if env.get('ISSUER_ORIGIN',origin)!=origin: raise Reject('ORIGIN_DRIFT')
+        return origin
+    return env['ISSUER_ORIGIN']
