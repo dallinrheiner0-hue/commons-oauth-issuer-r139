@@ -8,4 +8,7 @@ manifest=json.loads((root/'CONTENT.json').read_text())
 for name,expected in manifest.items():
     if Path(name).name!=name or hashlib.sha256((root/name).read_bytes()).hexdigest()!=expected:
         raise SystemExit('Artifact content mismatch')
-print('Frozen issuer content verified')
+actual={p.name for p in root.iterdir() if p.is_file()}
+if actual != set(manifest)|{'CONTENT.json'}:
+    raise SystemExit('Unexpected release file')
+print('Frozen diagnostic content verified')

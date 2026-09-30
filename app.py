@@ -1,93 +1,73 @@
-"""Dormant-by-default synthetic issuer. No startup writes, no automatic recovery."""
+"""Two routes only. No OpenAPI, UI, lifespan operation, activation or issuer imports."""
+import asyncio
 import hashlib
 import hmac
 import json
 import os
+import threading
 import time
-from urllib.parse import urlsplit
-from cryptography.hazmat.primitives import serialization
-from starlette.responses import JSONResponse
-from oauth import Config, Issuer, Reject, digest
-from state import Database
-from http_oauth import app_for
+from diagnostic import BINDING, RECEIPT_HASH, UNKNOWN, observe
+
+ATTEMPT='r139-diagnostic-20260930-01'
+
+def response(result,reason,started=None,finished=None):
+    return {'protocol':'r139-diagnostic-v1','attempt_id':ATTEMPT,
+      'initialization_id':BINDING['initialization_id'],'expected_receipt_sha256':RECEIPT_HASH,
+      'classification':result,'reason':reason,'snapshot_started_utc':started,
+      'snapshot_finished_utc':finished,'historical_outcome':'UNKNOWN'}
 
 class Application:
-    def __init__(self,db,origin,operator_digest,operator_deadline,issuer=None,clock=time.time):
-        p=urlsplit(origin)
-        if p.scheme!='https' or p.path or p.query or p.fragment or p.username or p.password or not p.hostname: raise Reject('ORIGIN')
-        if len(operator_digest)!=64 or any(c not in '0123456789abcdef' for c in operator_digest): raise Reject('OPERATOR_DIGEST')
-        if type(operator_deadline) is not int or not 0<operator_deadline<=clock()+86400: raise Reject('OPERATOR_WINDOW')
-        self.operator_deadline,self.clock=operator_deadline,clock
-        self.db,self.origin,self.operator_digest,self.issuer=db,origin,operator_digest,issuer
-        self.oauth=app_for(issuer) if issuer else None
+    def __init__(self,dsn,binding,digest,deadline,connect,clock=time.time):
+        if len(digest)!=64 or any(c not in '0123456789abcdef' for c in digest): raise ValueError('diagnostic digest required')
+        self.dsn,self.binding,self.digest,self.deadline,self.connect,self.clock=dsn,binding,digest,deadline,connect,clock
+        self.used=False; self.lock=threading.Lock()
 
     async def __call__(self,scope,receive,send):
         if scope['type']!='http': return
-        # Render's internal health probe need not carry public TLS proxy headers.
-        # This route reveals only liveness and performs no storage work.
-        if scope['path']=='/healthz' and scope['method']=='GET':
-            await JSONResponse({'alive':True,'synthetic_only':True},headers={'Cache-Control':'no-store'})(scope,receive,send)
-            return
-        headers=scope.get('headers',[])
-        def one(name):
-            values=[v.decode('latin1') for k,v in headers if k.lower()==name]
-            return values[0] if len(values)==1 else ''
-        status=400; result={'error':'invalid_request'}
-        try:
-            # Render terminates TLS. Exactly one HTTPS proxy header and pinned Host.
-            # Uvicorn proxy inference is disabled. Hosted edge overwriting remains a live gate.
-            if one(b'host')!=urlsplit(self.origin).netloc or one(b'x-forwarded-proto')!='https': raise Reject('INGRESS')
-            path=scope['path']; method=scope['method']
-            if path=='/healthz' and method=='GET':
-                result={'alive':True,'synthetic_only':True};status=200
-            elif path in ('/initialize','/activate','/status'):
-                auth=one(b'authorization')
-                if self.clock()>=self.operator_deadline or len(auth)>256 or not auth.startswith('Bearer ') or not hmac.compare_digest(digest(auth[7:]),self.operator_digest):
-                    status=401;result={'error':'unauthorized'}
-                elif scope.get('query_string') or method!=('GET' if path=='/status' else 'POST'):
-                    raise Reject('ADMIN_REQUEST')
+        status=404; data={'error':'not_found'}
+        if scope.get('query_string',b''):
+            status=400; data={'error':'query_not_allowed'}
+        elif scope['method']=='GET' and scope['path']=='/healthz':
+            status=200; data={'status':'diagnostic_only'}
+        elif scope['method']=='GET' and scope['path']=='/diagnostic/state':
+            headers=scope.get('headers',[])
+            auth=[v for k,v in headers if k.lower()==b'authorization']
+            body_headers=[v for k,v in headers if k.lower() in (b'transfer-encoding',b'content-length') and v!=b'0']
+            valid=(len(auth)==1 and auth[0].startswith(b'Bearer ') and len(auth[0])==71 and
+              hmac.compare_digest(hashlib.sha256(auth[0][7:]).hexdigest(),self.digest))
+            if not valid:
+                status=401; data={'error':'unauthorized'}
+            elif body_headers:
+                status=400; data={'error':'body_not_allowed'}
+            elif not self.clock()<self.deadline:
+                status=410; data=response(UNKNOWN,'EXPIRED')
+            else:
+                with self.lock:
+                    claimed=not self.used
+                    self.used=True
+                if not claimed:
+                    status=409; data=response(UNKNOWN,'ALREADY_CONSUMED_IN_PROCESS')
                 else:
-                    while True:
-                        msg=await receive()
-                        if msg['type']!='http.request' or msg.get('body'): raise Reject('EMPTY_BODY_REQUIRED')
-                        if not msg.get('more_body'): break
-                    if path=='/initialize': result=self.db.initialize()
-                    elif path=='/activate':
-                        if not self.issuer: raise Reject('NO_SYNTHETIC_CONFIG')
-                        result=self.db.activate(self.issuer)
-                    else:
-                        with self.db.tx() as run:
-                            row=self.db.inspect(run)
-                        result={'receipt':digest(self.db.receipt),'initialized':True,'activated':row[4], 'deadline':row[5]}
-                    status=200
-            elif self.oauth and path in ('/.well-known/oauth-authorization-server','/jwks','/authorize','/consent','/token','/ready'):
-                with self.db.tx() as run:
-                    row=self.db.inspect(run)
-                    if row[0]!=self.issuer.pin or not row[4] or row[5]!=self.issuer.cfg.deadline: raise Reject('NOT_ACTIVE')
-                forwarded=dict(scope,scheme='https')
-                await self.oauth(forwarded,receive,send); return
-            else: status=404;result={'error':'not_found'}
-        except Reject: status=409;result={'error':'state_or_request_rejected'}
-        except Exception: status=503;result={'error':'temporarily_unavailable'}
-        await JSONResponse(result,status_code=status,headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'})(scope,receive,send)
+                    started=int(self.clock())
+                    # Guard stays consumed if DB work or transport fails/cancels.
+                    try:
+                        result,reason=await asyncio.to_thread(observe,self.dsn,self.binding,self.connect)
+                    except Exception:
+                        result,reason=UNKNOWN,'OBSERVATION_UNCERTAIN'
+                    status=200; data=response(result,reason,started,int(self.clock()))
+        encoded=json.dumps(data,sort_keys=True,separators=(',',':')).encode()
+        await send({'type':'http.response.start','status':status,'headers':[
+          (b'content-type',b'application/json'),(b'cache-control',b'no-store'),
+          (b'content-length',str(len(encoded)).encode())]})
+        await send({'type':'http.response.body','body':encoded})
 
 def create_app():
-    db=Database(os.environ['DATABASE_URL'],json.loads(os.environ['DATABASE_BINDING']))
-    issuer=None
-    if os.environ.get('SYNTHETIC_OAUTH_ENABLED','false')=='true':
-        config=Config(**json.loads(os.environ['SYNTHETIC_OAUTH_CONFIG']))
-        key=serialization.load_pem_private_key(os.environ['SYNTHETIC_SIGNING_KEY'].encode(),password=None)
-        issuer=Issuer(config,db,key)
-    elif os.environ.get('SYNTHETIC_OAUTH_ENABLED','false')!='false': raise Reject('MODE')
-    origin=configured_origin(os.environ)
-    if issuer and issuer.cfg.issuer!=origin: raise Reject('ISSUER_BINDING')
-    return Application(db,origin,os.environ['OPERATOR_DIGEST'],int(os.environ['OPERATOR_DEADLINE']),issuer)
-
-def configured_origin(env):
-    if env.get('RENDER')=='true':
-        if env.get('RENDER_SERVICE_NAME')!='commons-oauth-trial-r139': raise Reject('SERVICE_BINDING')
-        origin=env['RENDER_EXTERNAL_URL']
-        if not (urlsplit(origin).hostname or '').endswith('.onrender.com'): raise Reject('RENDER_ORIGIN')
-        if env.get('ISSUER_ORIGIN',origin)!=origin: raise Reject('ORIGIN_DRIFT')
-        return origin
-    return env['ISSUER_ORIGIN']
+    import psycopg
+    if os.environ.get('SYNTHETIC_OAUTH_ENABLED')!='false': raise ValueError('OAuth must remain disabled')
+    # Public deployment gate is separately frozen; raw diagnostic token is never a server setting.
+    from gate import DIGEST, DEADLINE
+    if os.environ.get('DIAGNOSTIC_TOKEN_SHA256')!=DIGEST or os.environ.get('DIAGNOSTIC_DEADLINE')!=str(DEADLINE):
+        raise ValueError('diagnostic gate mismatch')
+    binding=json.loads(os.environ['DATABASE_BINDING'])
+    if binding!=BINDING: raise ValueError('binding mismatch')
+    return Application(os.environ['DATABASE_URL'],binding,DIGEST,DEADLINE,psycopg.connect)

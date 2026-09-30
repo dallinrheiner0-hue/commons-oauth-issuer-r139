@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "R139 diagnostic response",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "protocol": {
+      "const": "r139-diagnostic-v1"
+    },
+    "attempt_id": {
+      "const": "r139-diagnostic-20260930-01"
+    },
+    "initialization_id": {
+      "const": "1b0ef32352c17ab952969d637ae5844f"
+    },
+    "expected_receipt_sha256": {
+      "const": "11389382b6232c950df6292ebcf776acda2faee15e771c1b322a5e82bea19fec"
+    },
+    "classification": {
+      "enum": [
+        "UNINITIALIZED_AT_SNAPSHOT",
+        "INITIALIZED_AT_SNAPSHOT",
+        "INCONSISTENT_OR_FOREIGN_AT_SNAPSHOT",
+        "UNKNOWN"
+      ]
+    },
+    "reason": {
+      "enum": [
+        "SNAPSHOT_OBSERVED",
+        "BINDING_REJECTED",
+        "OBSERVATION_UNCERTAIN",
+        "CLEANUP_UNCERTAIN",
+        "TIME_BOUND_EXCEEDED",
+        "EXPIRED",
+        "ALREADY_CONSUMED_IN_PROCESS"
+      ]
+    },
+    "snapshot_started_utc": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "snapshot_finished_utc": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "historical_outcome": {
+      "const": "UNKNOWN"
+    }
+  },
+  "required": [
+    "protocol",
+    "attempt_id",
+    "initialization_id",
+    "expected_receipt_sha256",
+    "classification",
+    "reason",
+    "snapshot_started_utc",
+    "snapshot_finished_utc",
+    "historical_outcome"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "classification": {
+            "enum": [
+              "UNINITIALIZED_AT_SNAPSHOT",
+              "INITIALIZED_AT_SNAPSHOT",
+              "INCONSISTENT_OR_FOREIGN_AT_SNAPSHOT"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason": {
+            "const": "SNAPSHOT_OBSERVED"
+          },
+          "snapshot_started_utc": {
+            "type": "integer"
+          },
+          "snapshot_finished_utc": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  ]
+}
