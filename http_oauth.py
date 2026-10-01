@@ -63,7 +63,7 @@ This grants no execution authority or access to other conversations. Use this co
         except Reject as exc:
             # Fixed code only: never log URLs, query values, cookies or credentials.
             code=str(exc)
-            safe={'ORIGIN','AUTHORIZATION_REQUEST','UI_LOCALES','PKCE_OR_STATE','TRIAL_UNAVAILABLE','TRIAL_CONSUMED_OR_LIMITED','DUPLICATE_FIELDS','BODY_LIMIT','DATABASE_IDENTITY'}
+            safe={'ORIGIN','AUTHORIZATION_REQUEST','UI_LOCALES','PKCE_OR_STATE','TRIAL_UNAVAILABLE','TRIAL_CONSUMED_OR_LIMITED','DUPLICATE_FIELDS','BODY_LIMIT','DATABASE_IDENTITY','FORM','FLOW','FLOW_UNAVAILABLE','FLOW_CONSUMED','CSRF','LOGIN_FAILED','CONTENT_TYPE'}
             logging.getLogger('commons.oauth').warning('OAuth rejection: %s',code if code in safe else 'OTHER_REJECT')
             response=JSONResponse({'error':'invalid_request'},status_code=400)
         except (ValueError,UnicodeError):
@@ -72,7 +72,10 @@ This grants no execution authority or access to other conversations. Use this co
         except Exception:
             # Never return DSNs, secrets or database diagnostics to the caller.
             response=JSONResponse({'error':'temporarily_unavailable'},status_code=503)
-        response.headers.update({'Cache-Control':'no-store','Pragma':'no-cache','Referrer-Policy':'no-referrer',
+        # no-referrer makes native form POST Origin null in browsers. Keep
+        # same-origin form provenance; still suppress cross-origin referrers.
+        policy='same-origin' if request.url.path=='/authorize' and response.status_code==200 else 'no-referrer'
+        response.headers.update({'Cache-Control':'no-store','Pragma':'no-cache','Referrer-Policy':policy,
             'X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"})
         return response
     app.add_middleware(BaseHTTPMiddleware,dispatch=boundary)
