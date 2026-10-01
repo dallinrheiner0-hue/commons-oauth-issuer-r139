@@ -76,7 +76,7 @@ This grants no execution authority or access to other conversations. Use this co
         # same-origin form provenance; still suppress cross-origin referrers.
         policy='same-origin' if request.url.path=='/authorize' and response.status_code==200 else 'no-referrer'
         response.headers.update({'Cache-Control':'no-store','Pragma':'no-cache','Referrer-Policy':policy,
-            'X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"})
+            'X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; form-action 'self' "+issuer.cfg.callback+"; frame-ancestors 'none'; base-uri 'none'"})
         return response
     app.add_middleware(BaseHTTPMiddleware,dispatch=boundary)
     return app
