@@ -66,6 +66,11 @@ class Issuer:
             scopes_supported=c.scopes.split(),authorization_response_iss_parameter_supported=True)
 
     def start(self,params):
+        # Optional host language preference has no authorization meaning.
+        params=dict(params)
+        locales=params.pop('ui_locales',None)
+        if locales is not None and (len(locales)>128 or not re.fullmatch(r'[A-Za-z0-9-]+(?: [A-Za-z0-9-]+)*',locales)):
+            raise Reject('UI_LOCALES')
         c=self.cfg
         expected={'client_id':c.client_id,'redirect_uri':c.callback,'resource':c.resource,
                   'response_type':'code','code_challenge_method':'S256','scope':c.scopes}
