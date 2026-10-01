@@ -1,5 +1,6 @@
 """Small OAuth HTTP surface; does not host MCP or execute messages."""
 import html
+import logging
 from urllib.parse import parse_qsl
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -59,7 +60,14 @@ This grants no execution authority or access to other conversations. Use this co
         try:
             if str(request.base_url).rstrip('/')!=issuer.cfg.issuer: raise Reject('ORIGIN')
             response=await call_next(request)
-        except (Reject,ValueError,UnicodeError):
+        except Reject as exc:
+            # Fixed code only: never log URLs, query values, cookies or credentials.
+            code=str(exc)
+            safe={'ORIGIN','AUTHORIZATION_REQUEST','UI_LOCALES','PKCE_OR_STATE','TRIAL_UNAVAILABLE','TRIAL_CONSUMED_OR_LIMITED','DUPLICATE_FIELDS','BODY_LIMIT','DATABASE_IDENTITY'}
+            logging.getLogger('commons.oauth').warning('OAuth rejection: %s',code if code in safe else 'OTHER_REJECT')
+            response=JSONResponse({'error':'invalid_request'},status_code=400)
+        except (ValueError,UnicodeError):
+            logging.getLogger('commons.oauth').warning('OAuth rejection: PARSE_ERROR')
             response=JSONResponse({'error':'invalid_request'},status_code=400)
         except Exception:
             # Never return DSNs, secrets or database diagnostics to the caller.
